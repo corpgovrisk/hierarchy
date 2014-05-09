@@ -70,10 +70,10 @@ module Hierarchy
   # @param [ActiveRecord::Base] parent The parent object.
   # @raise [ArgumentError] If `parent` is an unsaved record with no primary key.
 
-  def parent=(parent)
-    raise ArgumentError, "Parent cannot be a new record" if parent.try(:new_record?)
-    self.path = parent.try(:my_path)
-  end
+  #def parent=(parent)
+  #  raise ArgumentError, "Parent cannot be a new record" if parent.try(:new_record?)
+  #  self.path = parent.try(:my_path)
+  #end
 
   # Returns an array of ancestors above this object. Note that a) this array
   # is ordered with the most senior ancestor at the beginning of the list, and
@@ -83,10 +83,10 @@ module Hierarchy
   # @param [Hash] options Additional finder options.
   # @return [Array] The objects above this one in the hierarchy.
 
-  def ancestors(options={})
+  def parents(options={})
     @ancestors ||= begin
       return [] if top_level?
-      objects = self.class.ancestors_of(self).scoped(options).group_by(&:id)
+      objects = self.class.ancestors_of(self).group_by(&:id)
       index_path.map { |id| objects[id].first }
     end
   end
@@ -96,13 +96,6 @@ module Hierarchy
 
   def descendants
     self.class.descendants_of self
-  end
-
-  # @return [ActiveRecord::Base] The object directly above this one in the
-  #   hierarchy.
-
-  def parent
-    top_level? ? nil : self.class.parent_of(self).first
   end
 
   # @return [ActiveRecord::Relation] The objects directly below this one
@@ -122,6 +115,10 @@ module Hierarchy
 
   def top_level?
     path.blank?
+  end
+
+  def depth
+    path.split('.').length
   end
 
   # @return [true, false] Whether or not this object has no children. Makes a
@@ -145,9 +142,16 @@ module Hierarchy
 
   # if our parent has changed, update our children's paths
   def update_children_with_new_parent
-    if path_changed? and not new_record? then
+    puts "before save: update_children_with_new_parent"
+    if parent_id_changed? && !new_record?
+      self.path = "#{parent.my_path}.#{self.id}" unless parent_id.nil?
+      self.path = self.id.to_s if self.path.nil? || self.path.blank?
       old_path = (path_was.blank? ? id.to_s : "#{path_was}.#{id}")
       self.class.where("path <@ ?", old_path).update_all([ "path = TEXT2LTREE(REPLACE(LTREE2TEXT(path), ?, ?))", old_path, my_path ])
+    end
+    byebug
+    if (parent_id.nil? || parent_id.blank?)
+      self.path = self.id.to_s
     end
   end
 end
